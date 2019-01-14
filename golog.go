@@ -4,14 +4,28 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
 	"path"
+	"reflect"
 	"runtime"
 	"strconv"
 	"time"
+
+	"./model"
+	"./transporter"
 )
 
-func init() {
+var INFO, DEBUG, ERROR, EMERGENCY, ALERT, CRITICAL, NOTICE, WARNING int
 
+func init() {
+	EMERGENCY = 0
+	ALERT = 1
+	CRITICAL = 2
+	ERROR = 3
+	WARNING = 4
+	NOTICE = 5
+	INFO = 6
+	DEBUG = 7
 }
 
 //Golog represents a golog instance with all the necessary options.
@@ -39,6 +53,18 @@ type Golog struct {
 	ErrorLogger    *log.Logger
 }
 
+type CallerInfo struct {
+	File   string
+	Line   int
+	Module string
+}
+
+func (c CallerInfo) String() string {
+
+	return c.Module + "/" + c.File + " " + strconv.Itoa(c.Line)
+
+}
+
 //New initializes a new Golog instance
 func New(output io.Writer) *Golog {
 
@@ -61,13 +87,13 @@ func New(output io.Writer) *Golog {
 		InfoLogger:     infoLogger,
 		ErrorLogger:    errorLogger,
 		DebugLogger:    debugLogger,
-		LogLevel:       3,
+		LogLevel:       DEBUG,
 	}
 }
 
 //getCallerInfo returns the info about the function calling golog
-func getCallerInfo(skip int) string {
-	var callerInfo string
+func getCallerInfo(skip int) CallerInfo {
+	var callerInfo CallerInfo
 	//var callingFuncName string
 
 	_, fullFilePath, lineNumber, ok := runtime.Caller(skip)
@@ -82,7 +108,10 @@ func getCallerInfo(skip int) string {
 			dirPath = dirPath[:len(dirPath)-1]
 			_, moduleName = path.Split(dirPath)
 		}
-		callerInfo = moduleName + "/" + fileName + " " + strconv.Itoa(lineNumber)
+		callerInfo.Module = moduleName
+		callerInfo.File = fileName
+		callerInfo.Line = lineNumber
+
 	}
 
 	return callerInfo
@@ -94,21 +123,31 @@ func (g *Golog) Println(v ...interface{}) {
 	g.Gologger.Println(v...)
 }
 
-func (g *Golog) buildPrefix(prefixType string) string {
+func (g *Golog) buildPrefix(level int) string {
 	//init prefix values
 	prefix := ""
 	timestamp := ""
 	callerInfo := ""
 
 	if g.ShowPrefix {
-		if prefixType == "info" {
-			prefix = g.InfoPrefix
-		}
-		if prefixType == "debug" {
-			prefix = g.DebugPrefix
-		}
-		if prefixType == "error" {
-			prefix = g.ErrorPrefix
+
+		switch level {
+		case DEBUG:
+			prefix = "DEBUG"
+		case INFO:
+			prefix = "INFO"
+		case NOTICE:
+			prefix = "NOTICE"
+		case WARNING:
+			prefix = "WARNING"
+		case ERROR:
+			prefix = "ERROR"
+		case CRITICAL:
+			prefix = "CRITICAL"
+		case ALERT:
+			prefix = "ALERT"
+		case EMERGENCY:
+			prefix = "EMERGENCY"
 		}
 
 	}
@@ -117,7 +156,7 @@ func (g *Golog) buildPrefix(prefixType string) string {
 	}
 
 	if g.ShowCallerInfo {
-		callerInfo = getCallerInfo(3)
+		callerInfo = getCallerInfo(3).String()
 	}
 
 	//build prefix
@@ -135,7 +174,7 @@ func (g *Golog) Info(format string, v ...interface{}) {
 	}
 
 	//build prefix
-	prefix := g.buildPrefix("info")
+	prefix := g.buildPrefix(INFO)
 
 	g.InfoLogger.SetPrefix(prefix)
 
@@ -151,7 +190,7 @@ func (g *Golog) Error(format string, v ...interface{}) {
 	}
 
 	//build prefix
-	prefix := g.buildPrefix("error")
+	prefix := g.buildPrefix(ERROR)
 
 	g.ErrorLogger.SetPrefix(prefix)
 
@@ -167,11 +206,61 @@ func (g *Golog) Debug(format string, v ...interface{}) {
 	}
 
 	//build prefix
-	prefix := g.buildPrefix("debug")
+	prefix := g.buildPrefix(DEBUG)
 
 	g.DebugLogger.SetPrefix(prefix)
 
 	g.DebugLogger.Printf(format, v...)
+}
+
+func (g *Golog) Log(message interface{}, level int) {
+
+	outType := reflect.ValueOf(g.Out).Type()
+	messageType := reflect.ValueOf(message).Type()
+	var m string
+
+	fmt.Printf("Log [output: %v] [level: %d] [message_type: %v] [message: %v]\n", reflect.ValueOf(g.Out).Type(), level, reflect.ValueOf(message).Type(), message)
+
+	//if the level of the current log is higher than the LogLevel, then do not print this log
+	if level > g.LogLevel {
+		return
+	}
+
+	//determine the type of message
+	switch messageType {
+	case reflect.TypeOf("s"):
+		fmt.Println("Message is of type string")
+		m = fmt.Sprintf("%s", message)
+
+	case reflect.TypeOf(model.Greylog{}):
+
+		ci := getCallerInfo(3)
+		gl := reflect.ValueOf(message).Interface().(model.Greylog)
+		gl.Level = level
+		gl.CustomFields["_file"] = ci.File
+		gl.CustomFields["_module"] = ci.Module
+		gl.CustomFields["_line"] = ci.Line
+
+		m = gl.String()
+
+		g.DebugLogger.Println(m)
+
+	}
+
+	//determine the output destination for the log
+	switch outType {
+	case reflect.TypeOf(os.Stdout):
+		fmt.Println("Writing message to file")
+		//build prefix
+		prefix := g.buildPrefix(level)
+
+		g.DebugLogger.SetPrefix(prefix)
+
+		g.DebugLogger.Println(m)
+
+	case reflect.TypeOf(transporter.AMQPTransporter{}):
+		fmt.Println("Writing message to RabbitMQ queue")
+	}
 }
 
 //SetErrorPrefix updates the prefix used for error logs
