@@ -2,8 +2,6 @@ package golog
 
 import (
 	"fmt"
-	"golog/model"
-	"golog/transporter"
 	"io"
 	"log"
 	"os"
@@ -12,6 +10,10 @@ import (
 	"runtime"
 	"strconv"
 	"time"
+
+	"github.com/paperclicks/golog/transporter"
+
+	"github.com/paperclicks/golog/model"
 )
 
 var INFO, DEBUG, ERROR, EMERGENCY, ALERT, CRITICAL, NOTICE, WARNING int
