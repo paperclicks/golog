@@ -220,8 +220,6 @@ func (g *Golog) Log(message interface{}, level int) {
 	messageType := reflect.ValueOf(message).Type()
 	var m string
 
-	fmt.Printf("Log [output: %v] [level: %d] [message_type: %v] [message: %v]\n", reflect.ValueOf(g.Out).Type(), level, reflect.ValueOf(message).Type(), message)
-
 	//if the level of the current log is higher than the LogLevel, then do not print this log
 	if level > g.LogLevel {
 		return
@@ -230,7 +228,6 @@ func (g *Golog) Log(message interface{}, level int) {
 	//determine the type of message
 	switch messageType {
 	case reflect.TypeOf("s"):
-		fmt.Println("Message is of type string")
 		m = fmt.Sprintf("%s", message)
 
 	case reflect.TypeOf(model.Greylog{}):
@@ -244,20 +241,18 @@ func (g *Golog) Log(message interface{}, level int) {
 
 		m = gl.String()
 
-		g.DebugLogger.Println(m)
+		g.Gologger.Println(m)
 
 	}
 
 	//determine the output destination for the log
 	switch outType {
 	case reflect.TypeOf(os.Stdout):
-		fmt.Println("Writing message to file")
-		//build prefix
 		prefix := g.buildPrefix(level)
 
-		g.DebugLogger.SetPrefix(prefix)
+		g.Gologger.SetPrefix(prefix)
 
-		g.DebugLogger.Println(m)
+		g.Gologger.Println(m)
 
 	case reflect.TypeOf(transporter.AMQPTransporter{}):
 		fmt.Println("Writing message to RabbitMQ queue")
