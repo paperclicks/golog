@@ -255,7 +255,7 @@ func (g *Golog) Log(message interface{}, level int) {
 		g.Gologger.Println(m)
 
 	case reflect.TypeOf(transporter.AMQPTransporter{}):
-		fmt.Println("Writing message to RabbitMQ queue")
+		g.Gologger.Println(m)
 	}
 }
 
