@@ -1,4 +1,4 @@
-package golog
+package gologv2
 
 import (
 	"fmt"
@@ -11,12 +11,22 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/paperclicks/golog/transporter"
-
 	"github.com/paperclicks/golog/model"
+	"github.com/paperclicks/golog/transporter"
 )
 
-var INFO, DEBUG, ERROR, EMERGENCY, ALERT, CRITICAL, NOTICE, WARNING int
+type LogLevel int
+
+type channelMessage struct {
+	Message    string
+	Prefix     string
+	Level      LogLevel
+	OutputType reflect.Type
+}
+
+var INFO, DEBUG, ERROR, EMERGENCY, ALERT, CRITICAL, NOTICE, WARNING LogLevel
+
+var logger *log.Logger
 
 func init() {
 	EMERGENCY = 0
@@ -40,7 +50,7 @@ func init() {
 //out: output destination for the logs; defaults to stdout
 //gologer: the logger instance
 type Golog struct {
-	LogLevel       int
+	LogLevel       LogLevel
 	InfoPrefix     string
 	DebugPrefix    string
 	ErrorPrefix    string
@@ -48,10 +58,11 @@ type Golog struct {
 	ShowPrefix     bool
 	ShowCallerInfo bool
 	Out            io.Writer
-	Gologger       *log.Logger
-	InfoLogger     *log.Logger
-	DebugLogger    *log.Logger
-	ErrorLogger    *log.Logger
+	Logger         *log.Logger
+	Chann          chan channelMessage
+	// Error          chan channelMessage
+	// Info           chan channelMessage
+	// Debug          chan channelMessage
 }
 
 type CallerInfo struct {
@@ -59,6 +70,10 @@ type CallerInfo struct {
 	Line   int
 	Module string
 }
+
+var infoChan, debugChan, errorChan, ch chan channelMessage
+var stopChan chan struct{}
+var golog *Golog
 
 func (c CallerInfo) String() string {
 
@@ -71,25 +86,32 @@ func New(output io.Writer) *Golog {
 
 	//Create a default logger having as output destination the writer passed in the constructor.
 	//All loggers will use this writer unless it is excplicitly overwrited by set*Output() functions
-	defaultLogger := log.New(output, "", 0)
-	infoLogger := log.New(output, "", 0)
-	debugLogger := log.New(output, "", 0)
-	errorLogger := log.New(output, "", 0)
+	logger = log.New(output, "", 0)
 
-	return &Golog{
-		InfoPrefix:     "INFO",
-		DebugPrefix:    "DEBUG",
-		ErrorPrefix:    "ERROR",
+	stopChan = make(chan struct{})
+
+	ch = make(chan channelMessage, 10)
+
+	// infoChan = make(chan channelMessage, 10)
+	// debugChan = make(chan channelMessage, 10)
+	// errorChan = make(chan channelMessage, 10)
+
+	golog = &Golog{
 		ShowTimestamp:  true,
 		ShowPrefix:     true,
 		ShowCallerInfo: true,
 		Out:            output,
-		Gologger:       defaultLogger,
-		InfoLogger:     infoLogger,
-		ErrorLogger:    errorLogger,
-		DebugLogger:    debugLogger,
+		Logger:         logger,
 		LogLevel:       DEBUG,
+		Chann:          ch,
+		// Info:           infoChan,
+		// Debug:          debugChan,
+		// Error:          errorChan,
 	}
+
+	go golog.consume(stopChan)
+
+	return golog
 }
 
 //getCallerInfo returns the info about the function calling golog
@@ -118,13 +140,7 @@ func getCallerInfo(skip int) CallerInfo {
 	return callerInfo
 }
 
-//Println simply calls fmt.Println
-func (g *Golog) Println(v ...interface{}) {
-
-	g.Gologger.Println(v...)
-}
-
-func (g *Golog) buildPrefix(level int) string {
+func (g *Golog) buildPrefix(level LogLevel) string {
 	//init prefix values
 	prefix := ""
 	timestamp := ""
@@ -166,57 +182,10 @@ func (g *Golog) buildPrefix(level int) string {
 	return prefix
 }
 
-//Info writes info messages to the established output
-func (g *Golog) Info(format string, v ...interface{}) {
-
-	//do not print Info logs  if log level is not 2 or 3
-	if g.LogLevel != 2 && g.LogLevel != 3 {
-		return
-	}
-
-	//build prefix
-	prefix := g.buildPrefix(INFO)
-
-	g.InfoLogger.SetPrefix(prefix)
-
-	g.InfoLogger.Printf(format, v...)
-}
-
-//Error writes error messages to the established output
-func (g *Golog) Error(format string, v ...interface{}) {
-
-	//do not print errors only if log level = 0
-	if g.LogLevel == 0 {
-		return
-	}
-
-	//build prefix
-	prefix := g.buildPrefix(ERROR)
-
-	g.ErrorLogger.SetPrefix(prefix)
-
-	g.ErrorLogger.Printf(format, v...)
-}
-
-//Debug writes debug messages to the established output
-func (g *Golog) Debug(format string, v ...interface{}) {
-
-	//do not print Debug logs if level != 3
-	if g.LogLevel != 3 {
-		return
-	}
-
-	//build prefix
-	prefix := g.buildPrefix(DEBUG)
-
-	g.DebugLogger.SetPrefix(prefix)
-
-	g.DebugLogger.Printf(format, v...)
-}
-
-func (g *Golog) Log(message interface{}, level int) {
+func (g *Golog) Log(message interface{}, level LogLevel) {
 
 	outType := reflect.ValueOf(g.Out).Type()
+
 	messageType := reflect.ValueOf(message).Type()
 	var m string
 
@@ -234,35 +203,50 @@ func (g *Golog) Log(message interface{}, level int) {
 
 		ci := getCallerInfo(3)
 		gl := reflect.ValueOf(message).Interface().(model.Greylog)
-		gl.Level = level
-		gl.CustomFields["file"] = ci.File
-		gl.CustomFields["module"] = ci.Module
-		gl.CustomFields["line"] = ci.Line
+		gl.Level = int(level)
+		gl.CustomFields["_file"] = ci.File
+		gl.CustomFields["_module"] = ci.Module
+		gl.CustomFields["_line"] = ci.Line
 
 		m = gl.String()
+	}
 
-		g.Gologger.Println(m)
+	prefix := g.buildPrefix(level)
+
+	//send message to chann
+	chm := channelMessage{Message: m, Level: level, OutputType: outType, Prefix: prefix}
+	g.Chann <- chm
+
+}
+
+func (g *Golog) consume(stopChan chan struct{}) {
+
+	for {
+
+		select {
+		case m := <-g.Chann:
+			outType := reflect.ValueOf(m.OutputType).Type()
+
+			//determine the output destination for the log
+			switch outType {
+			case reflect.TypeOf(os.Stdout):
+
+				g.Logger.SetPrefix(m.Prefix)
+
+				g.Logger.Println(m.Message)
+
+			case reflect.TypeOf(transporter.AMQPTransporter{}):
+
+				g.Logger.SetPrefix("")
+
+				g.Logger.Println(m.Message)
+			}
+		case <-stopChan:
+			return
+		}
 
 	}
 
-	//determine the output destination for the log
-	switch outType {
-	case reflect.TypeOf(os.Stdout):
-		prefix := g.buildPrefix(level)
-
-		g.Gologger.SetPrefix(prefix)
-
-		g.Gologger.Println(m)
-	case reflect.TypeOf(transporter.FileTransporter{}):
-		prefix := g.buildPrefix(level)
-
-		g.Gologger.SetPrefix(prefix)
-
-		g.Gologger.Println(m)
-
-	case reflect.TypeOf(transporter.AMQPTransporter{}):
-		g.Gologger.Println(m)
-	}
 }
 
 //SetErrorPrefix updates the prefix used for error logs
@@ -270,24 +254,9 @@ func (g *Golog) SetErrorPrefix(prefix string) {
 	g.ErrorPrefix = prefix
 }
 
-//SetErrorOutput updates the  destination output for error logs
-func (g *Golog) SetErrorOutput(out io.Writer) {
-	g.ErrorLogger.SetOutput(out)
-}
-
 //SetInfoPrefix updates the prefix used for info logs
 func (g *Golog) SetInfoPrefix(prefix string) {
 	g.InfoPrefix = prefix
-}
-
-//SetInfoOutput updates the  destination output for info logs
-func (g *Golog) SetInfoOutput(out io.Writer) {
-	g.InfoLogger.SetOutput(out)
-}
-
-//SetOutput updates the  destination output for all logs
-func (g *Golog) SetOutput(out io.Writer) {
-	g.Gologger.SetOutput(out)
 }
 
 //SetDebugPrefix updates the prefix used for debug logs
@@ -295,11 +264,6 @@ func (g *Golog) SetDebugPrefix(prefix string) {
 	g.DebugPrefix = prefix
 }
 
-//SetDebugOutput updates the  destination output for debug logs
-func (g *Golog) SetDebugOutput(out io.Writer) {
-	g.DebugLogger.SetOutput(out)
-}
-
-func (g *Golog) SetLogLevel(level int) {
+func (g *Golog) SetLogLevel(level LogLevel) {
 	g.LogLevel = level
 }
