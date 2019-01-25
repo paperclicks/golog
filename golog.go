@@ -238,31 +238,26 @@ func (g *Golog) Log(message interface{}, level int) {
 		gl.CustomFields["file"] = ci.File
 		gl.CustomFields["module"] = ci.Module
 		gl.CustomFields["line"] = ci.Line
-
 		m = gl.String()
-
-		g.Gologger.Println(m)
 
 	}
 
-	//determine the output destination for the log
+	//check the output type, and set eventual prefix
 	switch outType {
 	case reflect.TypeOf(os.Stdout):
 		prefix := g.buildPrefix(level)
 
 		g.Gologger.SetPrefix(prefix)
 
-		g.Gologger.Println(m)
-	case reflect.TypeOf(transporter.FileTransporter{}):
+	case reflect.TypeOf(&transporter.FileTransporter{}):
 		prefix := g.buildPrefix(level)
 
 		g.Gologger.SetPrefix(prefix)
 
-		g.Gologger.Println(m)
-
-	case reflect.TypeOf(transporter.AMQPTransporter{}):
-		g.Gologger.Println(m)
 	}
+
+	g.Gologger.Println(m)
+
 }
 
 //SetErrorPrefix updates the prefix used for error logs

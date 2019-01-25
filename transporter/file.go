@@ -12,6 +12,19 @@ type FileTransporter struct {
 	Rotate   bool
 }
 
+func NewFileTransporter(dir string, file string, rotate bool) (*FileTransporter, error) {
+
+	t := FileTransporter{FileName: file, Dir: dir, Rotate: rotate}
+	//check if file can be opened or created
+	f, err := t.getFile()
+	if err != nil {
+		return &t, err
+	}
+	defer f.Close()
+
+	return &t, nil
+}
+
 func (t FileTransporter) Write(data []byte) (int, error) {
 
 	f, err := t.getFile()
@@ -31,6 +44,7 @@ func (t FileTransporter) Write(data []byte) (int, error) {
 func (t FileTransporter) getFile() (*os.File, error) {
 
 	var fileName string
+	var out *os.File
 
 	if t.Dir == "" {
 		fileName = t.FileName
@@ -38,25 +52,21 @@ func (t FileTransporter) getFile() (*os.File, error) {
 		fileName = fmt.Sprintf("%s%s%s", t.Dir, string(os.PathSeparator), t.FileName)
 
 	}
-
-	log.Printf("Log destination will be: %s", fileName)
-	//fileName := "app.log"
 	//check if file exists
 	var _, err = os.Stat(fileName)
 
 	// create file if not exists
 	if os.IsNotExist(err) {
-		out, err := os.Create(fileName)
+		out, err = os.Create(fileName)
 		if err != nil {
-
-			log.Fatal(err)
+			return out, err
 		}
 		defer out.Close()
 	}
 
-	out, err := os.OpenFile(fileName, os.O_RDWR|os.O_APPEND, 0664)
+	out, err = os.OpenFile(fileName, os.O_RDWR|os.O_APPEND, 0664)
 	if err != nil {
-		log.Fatal(err)
+		return out, err
 	}
 
 	return out, err
