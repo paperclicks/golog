@@ -7,7 +7,7 @@ type AMQPTransporter struct {
 	Queue    string
 }
 
-func (t AMQPTransporter) Write(data []byte) (int, error) {
+func (t *AMQPTransporter) Write(data []byte) (int, error) {
 
 	err := t.RabbitMQ.Publish(t.Queue, string(data))
 

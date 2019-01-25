@@ -2,3 +2,5 @@ main/main.go
 lofile.log
 logfile.log
 main/debug
+app.log
+logs/*
