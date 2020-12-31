@@ -1,0 +1,4 @@
+github.com/paperclicks/go-rabbitmq v0.0.0-20201203164225-5b2e899732b3 h1:70BP5ty8vOvleqpn9POSmRU2/yV51vV16CCT1q96bew=
+github.com/paperclicks/go-rabbitmq v0.0.0-20201203164225-5b2e899732b3/go.mod h1:fEf5TbNraLDvH44Kk53cVtEjcmdgf7w8V9H8+Spmq3U=
+github.com/streadway/amqp v1.0.0 h1:kuuDrUJFZL1QYL9hUNuCxNObNzB0bV/ZG5jV3RWAQgo=
+github.com/streadway/amqp v1.0.0/go.mod h1:AZpEONHx3DKn8O/DFsRAY58/XVQiIPMTMB1SddzLXVw=
