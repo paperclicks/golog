@@ -21,7 +21,14 @@ func (t *AMQPTransporter) Write(data []byte) (int, error) {
 		Args:       nil,
 	}
 
-	err := t.RabbitMQ.PublishAssert(qInfo, string(data),amqp.Table{})
+	publishing := amqp.Publishing{
+		Headers:       amqp.Table{},
+		ContentType:   "text/plain",
+		Body:          data,
+	}
+
+
+	err := t.RabbitMQ.Publish(qInfo, publishing)
 
 	return len(data), err
 }

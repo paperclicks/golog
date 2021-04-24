@@ -166,53 +166,6 @@ func (g *Golog) buildPrefix(level int) string {
 	return prefix
 }
 
-//Info writes info messages to the established output
-func (g *Golog) Info(format string, v ...interface{}) {
-
-	//do not print Info logs  if log level is not 2 or 3
-	if g.LogLevel != 2 && g.LogLevel != 3 {
-		return
-	}
-
-	//build prefix
-	prefix := g.buildPrefix(INFO)
-
-	g.InfoLogger.SetPrefix(prefix)
-
-	g.InfoLogger.Printf(format, v...)
-}
-
-//Error writes error messages to the established output
-func (g *Golog) Error(format string, v ...interface{}) {
-
-	//do not print errors only if log level = 0
-	if g.LogLevel == 0 {
-		return
-	}
-
-	//build prefix
-	prefix := g.buildPrefix(ERROR)
-
-	g.ErrorLogger.SetPrefix(prefix)
-
-	g.ErrorLogger.Printf(format, v...)
-}
-
-//Debug writes debug messages to the established output
-func (g *Golog) Debug(format string, v ...interface{}) {
-
-	//do not print Debug logs if level != 3
-	if g.LogLevel != 3 {
-		return
-	}
-
-	//build prefix
-	prefix := g.buildPrefix(DEBUG)
-
-	g.DebugLogger.SetPrefix(prefix)
-
-	g.DebugLogger.Printf(format, v...)
-}
 
 func (g *Golog) Log(message interface{}, level int) {
 
@@ -253,7 +206,11 @@ func (g *Golog) Log(message interface{}, level int) {
 		prefix := g.buildPrefix(level)
 
 		g.Gologger.SetPrefix(prefix)
+	case reflect.TypeOf(&transporter.AMQPTransporter{}):
+		prefix := g.buildPrefix(level)
+		g.Gologger.SetPrefix(prefix)
 
+		g.Out.Write([]byte(m))
 	}
 
 	g.Gologger.Println(m)
